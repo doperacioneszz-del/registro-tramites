@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registro de Trámites</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container card">
+    <h1>Registro de Trámites</h1>
+    
+    <form id="formRegistro">
+      <label for="kiosco">Selecciona el Kiosco:</label>
+      <select id="kiosco" required></select>
+
+      <label for="tramite">Selecciona el Trámite:</label>
+      <select id="tramite" required></select>
+
+      <label for="folio">Folio / CURP / Línea de Captura:</label>
+      <input type="text" id="folio" placeholder="Ingresa folio o CURP" required />
+
+      <button type="submit">Registrar</button>
+    </form>
+
+    <button id="adminBtn">Administración</button>
+  </div>
+
+  <script type="module" src="index.js"></script>
+</body>
+</html>
