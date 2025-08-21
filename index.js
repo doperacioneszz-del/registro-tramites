@@ -41,8 +41,9 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
 });
 
 // Botón admin
+ /* y terminan con 
 document.getElementById('adminBtn').addEventListener('click', () => {
   window.location.href = 'admin.html';
-});
+});*/
 
 cargarSelects();
