@@ -23,14 +23,25 @@
       <button id="logoutBtn" class="btn-red">Logout</button>
 
       <h3>Agregar Kiosco</h3>
-      <input type="text" id="nuevoKiosco" placeholder="Nombre Kiosco" />
-      <button id="addKioscoBtn">Agregar</button>
+      <form id="add-kiosco-form">
+        <input type="text" id="kiosco-nombre" placeholder="Nombre Kiosco" required />
+        <button type="submit">Agregar</button>
+      </form>
+      <ul id="kioscos-list"></ul>
 
       <h3>Agregar Trámite</h3>
       <input type="text" id="nuevoTramite" placeholder="Nombre Trámite" />
       <button id="addTramiteBtn">Agregar</button>
 
       <h3>Descargar Registros</h3>
+      <label for="mesFiltro">Seleccionar mes:</label>
+      <input type="month" id="mesFiltro">
+
+      <label for="kioscoFiltro">Filtrar por kiosco:</label>
+      <select id="kioscoFiltro">
+        <option value="">Todos</option>
+      </select>
+
       <button id="downloadBtn">Descargar Excel</button>
     </div>
 
@@ -39,6 +50,7 @@
   <!-- Scripts -->
   <script type="module">
     import { supabase } from './supabase.js';
+    import './admin.js';
 
     const loginDiv = document.getElementById("loginDiv");
     const adminPanel = document.getElementById("adminPanel");
@@ -55,7 +67,7 @@
         return;
       }
       try {
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
           message.textContent = "❌ " + error.message;
         } else {
@@ -77,63 +89,90 @@
       message.textContent = "";
     });
 
-    // Agregar Kiosco
-    document.getElementById("addKioscoBtn").addEventListener("click", async () => {
-      const nombre = document.getElementById("nuevoKiosco").value.trim();
-      if (!nombre) return alert("Ingresa un nombre de kiosco");
-      const { data, error } = await supabase.from("kioscos").insert([{ nombre }]);
-      if (error) alert("Error: " + error.message);
-      else alert("Kiosco agregado");
-    });
-
     // Agregar Trámite
     document.getElementById("addTramiteBtn").addEventListener("click", async () => {
       const nombre = document.getElementById("nuevoTramite").value.trim();
       if (!nombre) return alert("Ingresa un nombre de trámite");
-      const { data, error } = await supabase.from("tramites").insert([{ nombre }]);
+      const { error } = await supabase.from("tramites").insert([{ nombre }]);
       if (error) alert("Error: " + error.message);
       else alert("Trámite agregado");
     });
 
-    // Descargar Excel
+    // DESCARGAR EXCEL CON FILTRO
+    const downloadBtn = document.getElementById("downloadBtn");
+    downloadBtn.addEventListener("click", async () => {
+      try {
+        const mesSeleccionado = document.getElementById("mesFiltro").value;
+        const kioscoFiltro = document.getElementById("kioscoFiltro").value;
 
-// DESCARGAR EXCEL UTF-8
-downloadBtn.addEventListener("click", async () => {
-  try {
-    const { data, error } = await supabase
-      .from("registros_tramites")
-      .select(`
-        folio,
-        fecha_registro,
-        registros_tramites_kiosco_id_fkey(nombre),
-        registros_tramites_tramite_id_fkey(nombre)
-      `);
+        if (!mesSeleccionado) {
+          return alert("⚠️ Selecciona un mes primero");
+        }
 
-    if (error) throw error;
-    if (!data.length) return alert("No hay registros para exportar.");
+        // Rango de fechas
+        const [anio, mes] = mesSeleccionado.split("-");
+        const inicio = new Date(anio, mes - 1, 1).toISOString();
+        const fin = new Date(anio, mes, 0, 23, 59, 59).toISOString();
 
-    // CSV con BOM UTF-8
-    let csv = "\uFEFF";
-    csv += "Folio,Fecha,Kiosco,Trámite\n";
+        // Paginación
+        let registros = [];
+        let desde = 0;
+        let hasta = 999;
+        let batch;
 
-    data.forEach(row => {
-      const fecha = new Date(row.fecha_registro);
-      const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()}`;
-      csv += `"${row.folio}","${fechaFormateada}","${row.registros_tramites_kiosco_id_fkey.nombre}","${row.registros_tramites_tramite_id_fkey.nombre}"\n`;
-    });
+        do {
+          let query = supabase
+            .from("registros_tramites")
+            .select(`
+              folio,
+              fecha_registro,
+              registros_tramites_kiosco_id_fkey(nombre),
+              registros_tramites_tramite_id_fkey(nombre)
+            `)
+            .gte("fecha_registro", inicio)
+            .lte("fecha_registro", fin)
+            .range(desde, hasta);
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "registros_tramites.csv";
-    a.click();
-    URL.revokeObjectURL(url);
+          if (kioscoFiltro) {
+            query = query.eq("kiosco_id", kioscoFiltro);
+          }
 
-  } catch (err) {
-    console.error("Error al obtener registros:", err);
-    alert("Error al obtener registros: " + err.message);
-  }
+          const { data, error } = await query;
+          if (error) throw error;
+          batch = data;
+          registros = registros.concat(batch);
+
+          desde += 1000;
+          hasta += 1000;
+        } while (batch.length > 0);
+
+        if (!registros.length) return alert("No hay registros en ese mes.");
+
+        // CSV con BOM UTF-8
+        let csv = "\uFEFF";
+        csv += "Folio,Fecha,Kiosco,Trámite\n";
+
+        registros.forEach(row => {
+          const fecha = new Date(row.fecha_registro);
+          const fechaFormateada =
+            `${fecha.getDate().toString().padStart(2, '0')}/` +
+            `${(fecha.getMonth() + 1).toString().padStart(2, '0')}/` +
+            `${fecha.getFullYear()}`;
+          csv += `"${row.folio}","${fechaFormateada}","${row.registros_tramites_kiosco_id_fkey.nombre}","${row.registros_tramites_tramite_id_fkey.nombre}"\n`;
+        });
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `registros_tramites_${anio}_${mes}${kioscoFiltro ? "_kiosco" + kioscoFiltro : ""}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+      } catch (err) {
+        console.error("Error al obtener registros:", err);
+        alert("Error al obtener registros: " + err.message);
+      }
     });
   </script>
 </body>

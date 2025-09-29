@@ -1,110 +1,74 @@
 // admin.js
-import { supabase } from "./supabase.js";
+import { supabase } from './supabase.js';
 
-// Elementos
-const loginBtn = document.getElementById("loginBtn");
-const logoutBtn = document.getElementById("logoutBtn");
-const addKioscoBtn = document.getElementById("addKioscoBtn");
-const addTramiteBtn = document.getElementById("addTramiteBtn");
-const downloadBtn = document.getElementById("downloadBtn");
+document.addEventListener("DOMContentLoaded", async () => {
+  const kioscosList = document.getElementById("kioscos-list");
+  const addKioscoForm = document.getElementById("add-kiosco-form");
+  const kioscoFiltro = document.getElementById("kioscoFiltro");
 
-const loginDiv = document.getElementById("loginDiv");
-const adminPanel = document.getElementById("adminPanel");
-const messageDiv = document.getElementById("message");
-
-// LOGIN
-loginBtn.addEventListener("click", async () => {
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value.trim();
-
-  if (!email || !password) {
-    messageDiv.textContent = "⚠️ Ingresa correo y contraseña";
-    messageDiv.className = "error";
-    return;
-  }
-
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  // Mostrar kioscos en lista y en filtro
+  async function cargarKioscos() {
+    const { data, error } = await supabase
+      .from("kioscos")
+      .select("*")
+      .order("id", { ascending: true });
 
     if (error) {
-      console.error("Error en login:", error.message);
-      messageDiv.textContent = "❌ " + error.message;
-      messageDiv.className = "error";
-    } else {
-      messageDiv.textContent = "✅ Bienvenido!";
-      messageDiv.className = "success";
-      loginDiv.style.display = "none";
-      adminPanel.style.display = "block";
+      console.error("Error al cargar kioscos:", error);
+      return;
     }
-  } catch (err) {
-    console.error("Excepción inesperada:", err);
-    messageDiv.textContent = "⚠️ Error inesperado. Revisa la consola.";
-    messageDiv.className = "error";
-  }
-});
 
-// LOGOUT
-logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  adminPanel.style.display = "none";
-  loginDiv.style.display = "block";
-});
+    kioscosList.innerHTML = "";
+    kioscoFiltro.innerHTML = `<option value="">Todos</option>`;
 
-// AGREGAR KIOSCO
-addKioscoBtn.addEventListener("click", async () => {
-  const nombre = document.getElementById("nuevoKiosco").value.trim();
-  if (!nombre) return alert("Ingresa un nombre de kiosco");
+    data.forEach((k) => {
+      const li = document.createElement("li");
+      li.textContent = k.nombre;
+      kioscosList.appendChild(li);
 
-  const { error } = await supabase.from("kioscos").insert([{ nombre }]);
-  if (error) alert("Error: " + error.message);
-  else alert("Kiosco agregado");
-});
-
-// AGREGAR TRÁMITE
-addTramiteBtn.addEventListener("click", async () => {
-  const nombre = document.getElementById("nuevoTramite").value.trim();
-  if (!nombre) return alert("Ingresa un nombre de trámite");
-
-  const { error } = await supabase.from("tramites").insert([{ nombre }]);
-  if (error) alert("Error: " + error.message);
-  else alert("Trámite agregado");
-});
-
-// DESCARGAR EXCEL UTF-8
-downloadBtn.addEventListener("click", async () => {
-  try {
-    const { data, error } = await supabase
-      .from("registros_tramites")
-      .select(`
-        folio,
-        fecha_registro,
-        registros_tramites_kiosco_id_fkey(nombre),
-        registros_tramites_tramite_id_fkey(nombre)
-      `);
-
-    if (error) throw error;
-    if (!data.length) return alert("No hay registros para exportar.");
-
-    // CSV con BOM UTF-8
-    let csv = "\uFEFF";
-    csv += "Folio,Fecha,Kiosco,Trámite\n";
-
-    data.forEach(row => {
-      const fecha = new Date(row.fecha_registro);
-      const fechaFormateada = `${fecha.getDate().toString().padStart(2,'0')}/${(fecha.getMonth()+1).toString().padStart(2,'0')}/${fecha.getFullYear()}`;
-      csv += `"${row.folio}","${fechaFormateada}","${row.registros_tramites_kiosco_id_fkey.nombre}","${row.registros_tramites_tramite_id_fkey.nombre}"\n`;
+      const option = document.createElement("option");
+      option.value = k.id;
+      option.textContent = k.nombre;
+      kioscoFiltro.appendChild(option);
     });
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "registros_tramites.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-
-  } catch (err) {
-    console.error("Error al obtener registros:", err);
-    alert("Error al obtener registros: " + err.message);
   }
+
+  // Agregar un kiosco (evita duplicados)
+  addKioscoForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nombre = document.getElementById("kiosco-nombre").value.trim();
+
+    if (!nombre) return;
+
+    // Verificar si ya existe
+    const { data: existente, error: searchError } = await supabase
+      .from("kioscos")
+      .select("*")
+      .eq("nombre", nombre)
+      .maybeSingle();
+
+    if (searchError) {
+      console.error("Error al buscar kiosco:", searchError);
+      return;
+    }
+
+    if (existente) {
+      alert("⚠️ Ese kiosco ya existe.");
+      return;
+    }
+
+    // Insertar solo si no existe
+    const { error } = await supabase.from("kioscos").insert([{ nombre }]);
+
+    if (error) {
+      console.error("Error al insertar kiosco:", error);
+      return;
+    }
+
+    addKioscoForm.reset();
+    await cargarKioscos();
+  });
+
+  // Inicializar
+  await cargarKioscos();
 });
